@@ -1,0 +1,46 @@
+
+synapse ed_stdp:
+
+    state:
+        w real = 1
+
+    parameters:
+        d ms = 1 ms  @nest::delay
+        lambda real = .01
+        tau_tr_pre ms = 20 ms
+        tau_tr_post ms = 20 ms
+        alpha real = 1
+        mu_plus real = 0
+        mu_minus real = 0
+        Wmax real = 100.
+        Wmin real = 0.
+        eta real = 5  # syanpse sensitivity to energy imbalance
+
+    equations:
+        kernel pre_trace_kernel = exp(-t / tau_tr_pre)
+        inline pre_trace real = convolve(pre_trace_kernel, pre_spikes)
+        kernel post_trace_kernel = exp(-t / tau_tr_post)
+        inline post_trace real = convolve(post_trace_kernel, post_spikes)
+
+    input:
+        pre_spikes <- spike
+        post_spikes <- spike
+        post_ATP real <- continuous
+
+    output: 
+        spike
+
+    onReceive(post_spikes):
+        ATP real = post_ATP/100
+        exponent real = eta * (1 - ATP)
+        energy_factor_ real = exp(-exponent)
+        w_ real = Wmax * (w / Wmax + (energy_factor_ * lambda * (1.0 - (w / Wmax)) ** mu_plus * pre_trace))
+        w = min(Wmax, w_)
+
+    onReceive(pre_spikes):
+        energy_factor_ real = 1 # post_ATP/100
+        w_ real = Wmax * (w / Wmax - (energy_factor_ * alpha * lambda * (w / Wmax) ** mu_minus * post_trace))
+        w = max(Wmin, w_)
+
+        deliver_spike(w, d)
+
